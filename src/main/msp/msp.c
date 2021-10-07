@@ -705,7 +705,7 @@ static bool mspCommonProcessOutCommand(int16_t cmdMSP, sbuf_t *dst, mspPostProce
 
     case MSP_DEBUG:
         for (int i = 0; i < DEBUG16_VALUE_COUNT; i++) {
-            sbufWriteU16(dst, debug[i]);      // 4 variables are here for general monitoring purpose
+            sbufWriteU16(dst, appdata[i]);      // 4 variables are here for general monitoring purpose //with my code there are 6 now
         }
         break;
 

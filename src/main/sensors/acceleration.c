@@ -509,6 +509,13 @@ void accUpdate(timeUs_t currentTimeUs, rollAndPitchTrims_t *rollAndPitchTrims)
     for (int axis = 0; axis < XYZ_AXIS_COUNT; axis++) {
         DEBUG_SET(DEBUG_ACCELEROMETER, axis, acc.dev.ADCRaw[axis]);
         acc.accADC[axis] = acc.dev.ADCRaw[axis];
+        //my code
+        appdata[0] = (int16_t) pidGetYeetState();
+        appdata[1] = (int16_t) acc.accADC[1];
+        appdata[2] = (int16_t) acc.accADC[2];
+        appdata[3] = (int16_t) gyro.gyroADCf[0];
+        appdata[4] = (int16_t) gyro.gyroADCf[1];
+        appdata[5] = (int16_t) gyro.gyroADCf[2];
     }
 
     if (accLpfCutHz) {

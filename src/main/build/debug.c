@@ -26,6 +26,7 @@
 
 int16_t debug[DEBUG16_VALUE_COUNT];
 uint8_t debugMode;
+int16_t appdata[6]; //my code
 
 #ifdef DEBUG_SECTION_TIMES
 uint32_t sectionTimes[2][4];
