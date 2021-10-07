@@ -871,7 +871,23 @@ STATIC_UNIT_TESTED float calcHorizonLevelStrength(void)
     return constrainf(horizonLevelStrength, 0, 1);
 }
 
+//YEET_STATE
+//0 = Drone moving, wait until it rests
+//1 = Drone resting, wait until it rests for a certain period of time
+//2 = Drone rested long enough and is now moving, calculating velocity, go to state 3 immediately (previously used for threshold throw detection)
+//3 = Waiting until acceleration drops close to zero for 20 frames -> free falling
+//4 = Throw detected, set THROW_TYPE, turn on motors on low power to stabilize drone and wait until drone close to level
+//5 = Calculate how to tilt to fly back
+//6 = fly back, turn off motors after certain period of time
+//7 = reset everything for next flight
+
 uint16_t YEET_STATE;
+
+//THROW_TYPE
+//0 = normal throw with horizontal velocity
+//1 = drop it like its hot
+//2 = throw upwards
+
 uint16_t THROW_TYPE;
 int32_t counter;
 float avg_acc;
@@ -888,6 +904,10 @@ timeUs_t lastTime;
 
 uint16_t pidGetYeetState(){
     return YEET_STATE;
+}
+
+uint16_t pidGetThrowType(){
+    return THROW_TYPE;
 }
 
 int32_t pidGetCounter(){
@@ -1009,9 +1029,9 @@ STATIC_UNIT_TESTED FAST_CODE_NOINLINE float pidLevel(int axis, const pidProfile_
                 imuQuaternionMultiplication(&temp, &quat, &acc_earth_frame);
                 
                 timeDelta_t timestep = cmpTimeUs(micros(), lastTime);
-                vel_x += acc_earth_frame.x/1000;
-                vel_y += acc_earth_frame.y/1000;
-                vel_z += (acc_earth_frame.z - avg_acc)/1000;
+                vel_x += acc_earth_frame.x*timestep/1000000;
+                vel_y += acc_earth_frame.y*timestep/1000000;
+                vel_z += (acc_earth_frame.z - avg_acc)*timestep/1000000;
 
                 //if (acc_sum/avg_acc*9.81 > 25 && YEET_STATE == 2){
                 //try throw detection only by free fall -> close to zero acceleration
@@ -1025,14 +1045,19 @@ STATIC_UNIT_TESTED FAST_CODE_NOINLINE float pidLevel(int axis, const pidProfile_
                     avg_throw_acc = (avg_throw_acc*(counter-1) + acc_sum)/counter;
                     if (counter == 20){
                         if (avg_throw_acc/avg_acc < 0.15) {
-                        YEET_STATE = 4;
-                        counter = 0;
-                        if (sqrtf(vel_x*vel_x+vel_y*vel_y)/avg_acc < 0.05){
-                            THROW_TYPE = 1;
-                        }
-                        else{
-                            THROW_TYPE = 0;
-                        }
+                            YEET_STATE = 4;
+                            counter = 0;
+                            if (sqrtf(vel_x*vel_x+vel_y*vel_y)/avg_acc < 0.05){
+                                if (vel_z > 0){
+                                    THROW_TYPE = 2;
+                                }
+                                else{
+                                    THROW_TYPE = 1;
+                                }
+                            }
+                            else{
+                                THROW_TYPE = 0;
+                            }
                         }
                         //detected free fall
                         else {
@@ -1049,14 +1074,21 @@ STATIC_UNIT_TESTED FAST_CODE_NOINLINE float pidLevel(int axis, const pidProfile_
 
             else if (YEET_STATE == 4){
                 if (THROW_TYPE == 1){
-                    if (counter > 50){
+                    if (counter > 10){
                         if (ABS(attitude.raw[0])<30 && ABS(attitude.raw[1])<30){
                             YEET_STATE = 5;                
                         }
                         else {
                             rxSetThrowThrottle(1500);
-                            mixerSetThrowThrottle(500);
+                            mixerSetThrowThrottle(700);
                         }
+                    }
+                }
+                else if (THROW_TYPE == 2){
+                    rxSetThrowThrottle(1500);
+                    mixerSetThrowThrottle(300);
+                    if (ABS(attitude.raw[0])<30 && ABS(attitude.raw[1])<30){
+                        YEET_STATE = 5;                
                     }
                 }
                 else{
@@ -1114,6 +1146,13 @@ STATIC_UNIT_TESTED FAST_CODE_NOINLINE float pidLevel(int axis, const pidProfile_
                     rxSetThrowThrottle(1500);
                     mixerSetThrowThrottle(500);
                 }
+                else if (THROW_TYPE == 2){
+                    yeet_back_pitch = 0;
+                    yeet_back_roll = 0;
+                    YEET_STATE = 6;
+                    rxSetThrowThrottle(1500);
+                    mixerSetThrowThrottle(300);
+                }
             }
 
             else if (YEET_STATE == 6){
@@ -1121,6 +1160,7 @@ STATIC_UNIT_TESTED FAST_CODE_NOINLINE float pidLevel(int axis, const pidProfile_
                     if (counter > 1300){
                         rxSetThrowThrottle(1000);// to turn off motors completely
                         mixerSetThrowThrottle(0);
+                        YEET_STATE = 7;
                     }
                     else{
                         rxSetThrowThrottle(1500);
@@ -1132,24 +1172,50 @@ STATIC_UNIT_TESTED FAST_CODE_NOINLINE float pidLevel(int axis, const pidProfile_
                     if (acc.accADC[2] > avg_acc){
                         rxSetThrowThrottle(1000);// to turn off motors completely
                         mixerSetThrowThrottle(0);
+                        YEET_STATE = 7;
                     }
                     else if (counter > 1400){
                         rxSetThrowThrottle(1000);// to turn off motors completely
                         mixerSetThrowThrottle(0);
+                        YEET_STATE = 7;
                     }
                     else{
                         rxSetThrowThrottle(1500);
                         mixerSetThrowThrottle(900);
                     }
                 }
+
+                else if (THROW_TYPE == 2){
+                    if (counter > 1400){
+                        rxSetThrowThrottle(1000);// to turn off motors completely
+                        mixerSetThrowThrottle(0);
+                        YEET_STATE = 7;
+                    }
+                    else{
+                        rxSetThrowThrottle(1500);
+                        mixerSetThrowThrottle(300);
+                    }
+                }
+            }
+
+            else if (YEET_STATE == 7){
+                YEET_STATE = 0;
+                THROW_TYPE = 0;
+                counter = 0;
+                avg_acc = 0;
+                max_acc = 0;
+                min_acc = 0;
+                vel_x = 0;
+                vel_y = 0;
+                vel_z = 0;
+                yeet_back_pitch = 0;
+                yeet_back_roll = 0;
+                avg_throw_acc = 0;
             }
 
             
                 
             lastTime = micros();
-            
-            //    rxSetThrowThrottle(1000); to turn off motors completely
-            //    mixerSetThrowThrottle(0);
         }
     }
     
