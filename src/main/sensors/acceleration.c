@@ -512,9 +512,9 @@ void accUpdate(timeUs_t currentTimeUs, rollAndPitchTrims_t *rollAndPitchTrims)
         //my code
         appdata[0] = (int16_t) pidGetYeetState();
         appdata[1] = (int16_t) pidGetThrowType();
-        appdata[2] = (int16_t) pidGetVelX();
-        appdata[3] = (int16_t) pidGetVelY();
-        appdata[4] = (int16_t) pidGetVelZ();
+        appdata[2] = (int16_t) pidGetThrowVelX();
+        appdata[3] = (int16_t) pidGetThrowVelY();
+        appdata[4] = (int16_t) pidGetThrowVelZ();
         appdata[5] = (int16_t) gyro.gyroADCf[2];
     }
 

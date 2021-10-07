@@ -234,6 +234,9 @@ extern float pidGetAvgAcc();
 extern float pidGetVelX();
 extern float pidGetVelY();
 extern float pidGetVelZ();
+extern float pidGetThrowVelX();
+extern float pidGetThrowVelY();
+extern float pidGetThrowVelZ();
 
 void pidResetIterm(void);
 void pidStabilisationState(pidStabilisationState_e pidControllerState);

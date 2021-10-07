@@ -888,7 +888,7 @@ uint16_t YEET_STATE;
 //1 = drop it like its hot
 //2 = throw upwards
 
-uint16_t THROW_TYPE;
+uint16_t THROW_TYPE = 100;
 int32_t counter;
 float avg_acc;
 float max_acc;
@@ -896,6 +896,9 @@ float min_acc;
 float vel_x;
 float vel_y;
 float vel_z;
+float throw_vel_x;
+float throw_vel_y;
+float throw_vel_z;
 float yeet_back_pitch;
 float yeet_back_roll;
 float avg_throw_acc;
@@ -930,6 +933,17 @@ float pidGetVelZ(){
     return vel_z;
 }
 
+float pidGetThrowVelX(){
+    return throw_vel_x;
+}
+
+float pidGetThrowVelY(){
+    return throw_vel_y;
+}
+
+float pidGetThrowVelZ(){
+    return throw_vel_z;
+}
 // Use the FAST_CODE_NOINLINE directive to avoid this code from being inlined into ITCM RAM to avoid overflow.
 // The impact is possibly slightly slower performance on F7/H7 but they have more than enough
 // processing power that it should be a non-issue.
@@ -949,6 +963,29 @@ STATIC_UNIT_TESTED FAST_CODE_NOINLINE float pidLevel(int axis, const pidProfile_
             mixerSetThrowThrottle(0);
 
             counter += 1;
+
+            if (YEET_STATE == 2 || YEET_STATE == 3 || YEET_STATE == 4 || YEET_STATE == 5 || YEET_STATE == 6){
+                quaternion quat;
+                getQuaternion(&quat);
+                quaternion temp;
+                quaternion acc_all; 
+                acc_all.w = 0;
+                acc_all.x = acc.accADC[0];
+                acc_all.y = acc.accADC[1];
+                acc_all.z = acc.accADC[2];
+                quaternion acc_earth_frame;
+                imuQuaternionMultiplication(&quat, &acc_all, &temp);
+                quat.x = -quat.x;
+                quat.y = -quat.y;
+                quat.z = -quat.z;
+                imuQuaternionMultiplication(&temp, &quat, &acc_earth_frame);
+                
+                timeDelta_t timestep = cmpTimeUs(micros(), lastTime);
+                vel_x += acc_earth_frame.x*timestep/1000000;
+                vel_y += acc_earth_frame.y*timestep/1000000;
+                vel_z += (acc_earth_frame.z - avg_acc)*timestep/1000000;
+            }
+            
 
             //drone not resting, wait until it is not moving 
             //not moving if total acceleration is between 2000 and 2300 and not deviating more than 0.4% from average acceleration for 1000 consecutive data points
@@ -1013,26 +1050,6 @@ STATIC_UNIT_TESTED FAST_CODE_NOINLINE float pidLevel(int axis, const pidProfile_
 
             //drone is moving, integrating
             else if (YEET_STATE == 2 || YEET_STATE == 3){
-                quaternion quat;
-                getQuaternion(&quat);
-                quaternion temp;
-                quaternion acc_all; 
-                acc_all.w = 0;
-                acc_all.x = acc.accADC[0];
-                acc_all.y = acc.accADC[1];
-                acc_all.z = acc.accADC[2];
-                quaternion acc_earth_frame;
-                imuQuaternionMultiplication(&quat, &acc_all, &temp);
-                quat.x = -quat.x;
-                quat.y = -quat.y;
-                quat.z = -quat.z;
-                imuQuaternionMultiplication(&temp, &quat, &acc_earth_frame);
-                
-                timeDelta_t timestep = cmpTimeUs(micros(), lastTime);
-                vel_x += acc_earth_frame.x*timestep/1000000;
-                vel_y += acc_earth_frame.y*timestep/1000000;
-                vel_z += (acc_earth_frame.z - avg_acc)*timestep/1000000;
-
                 //if (acc_sum/avg_acc*9.81 > 25 && YEET_STATE == 2){
                 //try throw detection only by free fall -> close to zero acceleration
                 if (acc_sum/avg_acc*9.81 > 0 && YEET_STATE == 2){
@@ -1043,11 +1060,16 @@ STATIC_UNIT_TESTED FAST_CODE_NOINLINE float pidLevel(int axis, const pidProfile_
                 else if (YEET_STATE == 3){
                     //avg_z_acc = (avg_z_acc*(counter-1) + acc_all.z)/counter;
                     avg_throw_acc = (avg_throw_acc*(counter-1) + acc_sum)/counter;
-                    if (counter == 20){
+                    if (counter == 10){
                         if (avg_throw_acc/avg_acc < 0.15) {
                             YEET_STATE = 4;
                             counter = 0;
-                            if (sqrtf(vel_x*vel_x+vel_y*vel_y)/avg_acc < 0.05){
+                            //write throw velocity (and gyro??)
+                            throw_vel_x = vel_x;
+                            throw_vel_y = vel_y;
+                            throw_vel_z = vel_z;
+
+                            if (sqrtf(vel_x*vel_x+vel_y*vel_y)/avg_acc < 0.1){
                                 if (vel_z > 0){
                                     THROW_TYPE = 2;
                                 }
@@ -1080,13 +1102,13 @@ STATIC_UNIT_TESTED FAST_CODE_NOINLINE float pidLevel(int axis, const pidProfile_
                         }
                         else {
                             rxSetThrowThrottle(1500);
-                            mixerSetThrowThrottle(700);
+                            mixerSetThrowThrottle(500);
                         }
                     }
                 }
                 else if (THROW_TYPE == 2){
                     rxSetThrowThrottle(1500);
-                    mixerSetThrowThrottle(300);
+                    mixerSetThrowThrottle(200);
                     if (ABS(attitude.raw[0])<30 && ABS(attitude.raw[1])<30){
                         YEET_STATE = 5;                
                     }
@@ -1123,9 +1145,9 @@ STATIC_UNIT_TESTED FAST_CODE_NOINLINE float pidLevel(int axis, const pidProfile_
                     quaternion temp;
                     quaternion vel_all; 
                     vel_all.w = 0;
-                    vel_all.x = -vel_x;
-                    vel_all.y = -vel_y;
-                    vel_all.z = vel_z;
+                    vel_all.x = -throw_vel_x;
+                    vel_all.y = -throw_vel_y;
+                    vel_all.z = throw_vel_z;
                     quaternion vel_local_frame;
                     imuQuaternionMultiplication(&quat, &vel_all, &temp);
                     quat.x = -quat.x;
@@ -1157,7 +1179,12 @@ STATIC_UNIT_TESTED FAST_CODE_NOINLINE float pidLevel(int axis, const pidProfile_
 
             else if (YEET_STATE == 6){
                 if (THROW_TYPE == 0){
-                    if (counter > 1300){
+                    if (counter > 1400){
+                        rxSetThrowThrottle(1000);// to turn off motors completely
+                        mixerSetThrowThrottle(0);
+                        YEET_STATE = 7;
+                    }
+                    else if (sqrtf(throw_vel_x*throw_vel_x+throw_vel_y*throw_vel_y+throw_vel_z*throw_vel_z)<sqrtf(vel_x*vel_x+vel_y*vel_y+vel_z*vel_z)){
                         rxSetThrowThrottle(1000);// to turn off motors completely
                         mixerSetThrowThrottle(0);
                         YEET_STATE = 7;
@@ -1174,33 +1201,33 @@ STATIC_UNIT_TESTED FAST_CODE_NOINLINE float pidLevel(int axis, const pidProfile_
                         mixerSetThrowThrottle(0);
                         YEET_STATE = 7;
                     }
-                    else if (counter > 1400){
+                    else if (counter > 1000){
                         rxSetThrowThrottle(1000);// to turn off motors completely
                         mixerSetThrowThrottle(0);
                         YEET_STATE = 7;
                     }
                     else{
                         rxSetThrowThrottle(1500);
-                        mixerSetThrowThrottle(900);
+                        mixerSetThrowThrottle(1000);
                     }
                 }
 
                 else if (THROW_TYPE == 2){
-                    if (counter > 1400){
+                    if (counter > 1000){
                         rxSetThrowThrottle(1000);// to turn off motors completely
                         mixerSetThrowThrottle(0);
                         YEET_STATE = 7;
                     }
                     else{
                         rxSetThrowThrottle(1500);
-                        mixerSetThrowThrottle(300);
+                        mixerSetThrowThrottle(200);
                     }
                 }
             }
 
             else if (YEET_STATE == 7){
                 YEET_STATE = 0;
-                THROW_TYPE = 0;
+                THROW_TYPE = 100;
                 counter = 0;
                 avg_acc = 0;
                 max_acc = 0;
