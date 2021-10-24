@@ -74,6 +74,10 @@ int rxThrow_throttle;
 void rxSetThrowThrottle(int throt){
     rxThrow_throttle = throt;
 }
+int rxBeeper;
+void rxSetBeeper(int beep){
+    rxBeeper = beep;
+}
 
 
 const char rcChannelLetters[] = "AERT12345678abcdefgh";
@@ -648,6 +652,12 @@ static void detectAndApplySignalLossBehaviour(void)
 
             if (FLIGHT_MODE(ANGLE_MODE) && channel == THROTTLE){
                 rcData[THROTTLE] = rxThrow_throttle;
+            }
+            else if (FLIGHT_MODE(ANGLE_MODE) && channel == 6){
+                if (rxBeeper > 1500){
+                    rcData[4] = 1100;
+                }
+                rcData[6] = rxBeeper;
             }
             else{
                 
