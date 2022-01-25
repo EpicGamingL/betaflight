@@ -874,7 +874,7 @@ STATIC_UNIT_TESTED float calcHorizonLevelStrength(void)
 //YEET_STATE
 //0 = Drone moving, wait until it rests
 //1 = Drone resting, wait until it rests for a certain period of time
-//2 = Drone rested long enough and is now moving, calculating velocity, go to state 3 immediately (previously used for threshold throw detection)
+//2 = unused
 //3 = Waiting until acceleration drops close to zero for 20 frames -> free falling
 //4 = Throw detected, set THROW_TYPE, turn on motors on low power to stabilize drone and wait until drone close to level
 //5 = Calculate how to tilt to fly back
@@ -898,13 +898,19 @@ float min_acc;
 float vel_x;
 float vel_y;
 float vel_z;
+float pos_x;
+float pos_y;
+float pos_z;
 float throw_vel_x;
 float throw_vel_y;
 float throw_vel_z;
 float yeet_back_pitch;
 float yeet_back_roll;
 float avg_throw_acc;
+float projectedHeight;
+float time_until_at_user; //seconds
 int16_t counter_for_throw_1;
+bool throw0falling;
 
 timeUs_t lastTime;
 
@@ -928,6 +934,10 @@ float pidGetAvgAcc(){
     return avg_acc;
 }
 
+float pidGetProjectedHeight(){
+    return projectedHeight;
+}
+
 float pidGetVelX(){
     return vel_x;
 }
@@ -940,6 +950,18 @@ float pidGetVelZ(){
     return vel_z;
 }
 
+float pidGetPosX(){
+    return pos_x;
+}
+
+float pidGetPosY(){
+    return pos_y;
+}
+
+float pidGetPosZ(){
+    return pos_z;
+}
+
 float pidGetThrowVelX(){
     return throw_vel_x;
 }
@@ -950,6 +972,10 @@ float pidGetThrowVelY(){
 
 float pidGetThrowVelZ(){
     return throw_vel_z;
+}
+
+float pidGetProjectedTime(){
+    return time_until_at_user;
 }
 // Use the FAST_CODE_NOINLINE directive to avoid this code from being inlined into ITCM RAM to avoid overflow.
 // The impact is possibly slightly slower performance on F7/H7 but they have more than enough
@@ -968,11 +994,12 @@ STATIC_UNIT_TESTED FAST_CODE_NOINLINE float pidLevel(int axis, const pidProfile_
 
             rxSetThrowThrottle(1000);
             mixerSetThrowThrottle(0);
+            rxSetArm(false);
 
             counter += 1;
 
 
-            if (YEET_STATE == 2 || YEET_STATE == 3 || YEET_STATE == 4 || YEET_STATE == 5 || YEET_STATE == 6){
+            if (YEET_STATE == 3 || YEET_STATE == 4 || YEET_STATE == 5 || YEET_STATE == 6){
                 quaternion quat;
                 getQuaternion(&quat);
                 quaternion temp;
@@ -992,6 +1019,12 @@ STATIC_UNIT_TESTED FAST_CODE_NOINLINE float pidLevel(int axis, const pidProfile_
                 vel_x += acc_earth_frame.x*timestep/1000000;
                 vel_y += acc_earth_frame.y*timestep/1000000;
                 vel_z += (acc_earth_frame.z - avg_acc)*timestep/1000000;
+
+                if (YEET_STATE == 4 || YEET_STATE == 5 || YEET_STATE == 6){
+                    pos_x += vel_x*timestep/1000000;
+                    pos_y += vel_y*timestep/1000000;
+                    pos_z += vel_z*timestep/1000000;
+                }
             }
             
 
@@ -1013,7 +1046,7 @@ STATIC_UNIT_TESTED FAST_CODE_NOINLINE float pidLevel(int axis, const pidProfile_
                         min_acc = acc_sum;
                     }
                     avg_acc = (avg_acc*(counter-1) + acc_sum)/counter;
-                    if (avg_acc > 2080 || avg_acc < 2020 || max_acc > avg_acc*1.01 || min_acc < avg_acc*0.99){
+                    if (avg_acc > 2100 || avg_acc < 2000 || max_acc > avg_acc*1.02 || min_acc < avg_acc*0.98){
                         counter = 0;
                         avg_acc = 0;
                         max_acc = 0;
@@ -1039,9 +1072,10 @@ STATIC_UNIT_TESTED FAST_CODE_NOINLINE float pidLevel(int axis, const pidProfile_
                         min_acc = acc_sum;
                     }
                 
-                if (avg_acc > 2080 || avg_acc < 2020 || max_acc > avg_acc*1.01 || min_acc < avg_acc*0.99){
+                if (avg_acc > 2100 || avg_acc < 2000 || max_acc > avg_acc*1.02 || min_acc < avg_acc*0.98){
                     if (counter > 200){
-                        YEET_STATE = 2;
+                        YEET_STATE = 3;
+                        counter = 0;
                         throwWaitCounter = 0;
                     }
                     else {
@@ -1055,75 +1089,75 @@ STATIC_UNIT_TESTED FAST_CODE_NOINLINE float pidLevel(int axis, const pidProfile_
                 else{
                     if (counter > 199){
                         //turn beeper off
-                        rxSetBeeper(1100);
+                        //rxSetBeeper(1100);
+                        rxSetArm(true);
                     }
                 }                
 
             }
 
             //drone is moving, integrating
-            else if (YEET_STATE == 2 || YEET_STATE == 3){
-                //if (acc_sum/avg_acc*9.81 > 25 && YEET_STATE == 2){
-                //try throw detection only by free fall -> close to zero acceleration
-                if (acc_sum/avg_acc*9.81 > 0 && YEET_STATE == 2){
-                    YEET_STATE = 3;
-                    counter = 0;
-                }
-            
-                else if (YEET_STATE == 3){
-                    //avg_z_acc = (avg_z_acc*(counter-1) + acc_all.z)/counter;
-                    avg_throw_acc = (avg_throw_acc*(counter-1) + acc_sum)/counter;
-                    if (counter == 10){
-                        throwWaitCounter += 10;
-                        if (throwWaitCounter > 4000){
-                            YEET_STATE = 7;
-                            //turn on beeper
-                            rxSetBeeper(1900);
-                        }
-                        else{
-                            if (avg_throw_acc/avg_acc < 0.15) {
-                                //detected free fall
-                                YEET_STATE = 4;
-                                counter = 0;
-                                THROW_COUNTER += 1;
-                                //write throw velocity (and gyro??)
-                                throw_vel_x = vel_x;
-                                throw_vel_y = vel_y;
-                                throw_vel_z = vel_z;
+            else if (YEET_STATE == 3){
+                rxSetArm(true);
+                avg_throw_acc = (avg_throw_acc*counter + acc_sum)/(counter+1);
+                if (counter == 10){
+                    throwWaitCounter += 10;
+                    if (throwWaitCounter > 4000){
+                        YEET_STATE = 7;
+                        //turn on beeper
+                        //rxSetBeeper(1900);
+                    }
+                    else{
+                        if (avg_throw_acc/avg_acc < 0.15) {
+                            //detected free fall
+                            YEET_STATE = 4;
+                            counter = 0;
+                            THROW_COUNTER += 1;
+                            //write throw velocity (and gyro??)
+                            throw_vel_x = vel_x;
+                            throw_vel_y = vel_y;
+                            throw_vel_z = vel_z;
 
-                                if (sqrtf(vel_x*vel_x+vel_y*vel_y)/avg_acc < 0.1){
-                                    if (vel_z > 0){
-                                        THROW_TYPE = 2;
-                                    }
-                                    else{
-                                        THROW_TYPE = 1;
-                                        counter_for_throw_1 = 600;
-                                    }
+
+                            //maybe remove this mode altogether??
+                            if (sqrtf(vel_x*vel_x+vel_y*vel_y)/vel_z < 0.2){
+                                if (vel_z > 0){
+                                    THROW_TYPE = 2;
                                 }
                                 else{
-                                    THROW_TYPE = 0;
+                                    THROW_TYPE = 1;
+                                    counter_for_throw_1 = 1000;
                                 }
                             }
-                            
-                            else {
-                                counter = 0;
-                                avg_throw_acc = 0;
+                            else{
+                                THROW_TYPE = 0;
                             }
                         }
                         
-                    }                                
-                    
-                }              
-                
+                        else {
+                            counter = 0;
+                            avg_throw_acc = 0;
+                        }
+                    }
 
+                }
                 
             }
 
             else if (YEET_STATE == 4){
+                rxSetArm(true);
                 if (THROW_TYPE == 1){
-                    YEET_STATE = 5;                
-                    rxSetThrowThrottle(1500);
-                    mixerSetThrowThrottle(600);
+                    if (counter > 200){
+                        YEET_STATE = 5;
+                        rxSetThrowThrottle(1500);
+                        mixerSetThrowThrottle(600);
+                                                            
+                    }
+                    else{
+                        rxSetThrowThrottle(1500);
+                        mixerSetThrowThrottle(100);
+                    }              
+
                 }
                 
                 else if (THROW_TYPE == 2){
@@ -1141,67 +1175,136 @@ STATIC_UNIT_TESTED FAST_CODE_NOINLINE float pidLevel(int axis, const pidProfile_
                 }
                 //THROW TYPE 0
                 else{
-                    if (vel_z < 0){
+                    if (throw0falling == false){
+                        if (vel_z < 0){
+                            throw0falling = true;
+                        }
+                        else{
+                            rxSetThrowThrottle(1500);
+                            mixerSetThrowThrottle(100);
+                        }
+                    }
+                    
+                    if (throw0falling == true){
 
-                        if (ABS(attitude.raw[0])<40 && ABS(attitude.raw[1])<40){
+                        //if (ABS(attitude.raw[0])<40 && ABS(attitude.raw[1])<40){
+                        if (pos_z + vel_z*vel_z/4096 > 100){
+                            //calculate in which direction drone has to pitch/roll to come back
+                            quaternion quat;
+                            getQuaternion(&quat);
+                            quat.x = -quat.x;
+                            quat.y = -quat.y;
+                            quat.z = -quat.z;
+                            quaternion temp;
+                            quaternion vel_all; 
+                            vel_all.w = 0;
+                            //vel_all.x = -throw_vel_x;
+                            //vel_all.y = -throw_vel_y;
+                            vel_all.x = -pos_x;
+                            vel_all.y = -pos_y;
+                            //vel_all.z = throw_vel_z;
+                            vel_all.z = 0;
+                            quaternion vel_local_frame;
+                            imuQuaternionMultiplication(&quat, &vel_all, &temp);
+                            quat.x = -quat.x;
+                            quat.y = -quat.y;
+                            quat.z = -quat.z;
+                            imuQuaternionMultiplication(&temp, &quat, &vel_local_frame);
+                            float xy_sum = sqrtf(vel_local_frame.x*vel_local_frame.x + vel_local_frame.y*vel_local_frame.y);
+
+                            //calculate where the drone is based on the throw, units are meters
+                            //float delta_horizontal = sqrtf(throw_vel_x*throw_vel_x+throw_vel_y*throw_vel_y)/avg_acc * counter/100;
+                            //float delta_vertical = (throw_vel_z/avg_acc - 0.5*9.81*counter/10000)*counter/100;
+
+                            //use maximum thrust, calculate how much angle is needed to compensate gravity
+                            
+                            yeet_back_roll = -vel_local_frame.y/xy_sum*40;
+                            yeet_back_pitch = vel_local_frame.x/xy_sum*40;
+                            rxSetThrowThrottle(1500);
+                            mixerSetThrowThrottle(600);//600
                             YEET_STATE = 5;
                         }
                         else {
                             rxSetThrowThrottle(1500);
-                            mixerSetThrowThrottle(400);
+                            mixerSetThrowThrottle(550); //400
                         }
-                        
+                            
+                    }
                     
-                    }
-                    else{
-                        rxSetThrowThrottle(1500);
-                        mixerSetThrowThrottle(100);
-                    }
+                    
                 }
                 
                                 
             }
 
             else if (YEET_STATE == 5){
+                rxSetArm(true);
                 if (THROW_TYPE == 0){
-                    //calculate in which direction drone has to pitch/roll to come back
-                    quaternion quat;
-                    getQuaternion(&quat);
-                    quat.x = -quat.x;
-                    quat.y = -quat.y;
-                    quat.z = -quat.z;
-                    quaternion temp;
-                    quaternion vel_all; 
-                    vel_all.w = 0;
-                    vel_all.x = -throw_vel_x;
-                    vel_all.y = -throw_vel_y;
-                    vel_all.z = throw_vel_z;
-                    quaternion vel_local_frame;
-                    imuQuaternionMultiplication(&quat, &vel_all, &temp);
-                    quat.x = -quat.x;
-                    quat.y = -quat.y;
-                    quat.z = -quat.z;
-                    imuQuaternionMultiplication(&temp, &quat, &vel_local_frame);
-                    float xy_sum = sqrtf(vel_local_frame.x*vel_local_frame.x + vel_local_frame.y*vel_local_frame.y);
-
-                    //calculate where the drone is based on the throw, units are meters
-                    //float delta_horizontal = sqrtf(throw_vel_x*throw_vel_x+throw_vel_y*throw_vel_y)/avg_acc * counter/100;
-                    //float delta_vertical = (throw_vel_z/avg_acc - 0.5*9.81*counter/10000)*counter/100;
-
-                    //use maximum thrust, calculate how much angle is needed to compensate gravity
+                    if (acc_sum > 6000){
+                        rxSetThrowThrottle(1000);// to turn off motors completely
+                        mixerSetThrowThrottle(0);
+                        YEET_STATE = 7;
+                    }
+                    else if (counter > 1700){
+                        rxSetThrowThrottle(1500);
+                        mixerSetThrowThrottle(350);
+                        yeet_back_pitch = 0;
+                        yeet_back_roll = 0;
+                        YEET_STATE = 6;
+                    }
+                    /*
+                    else if (sqrtf(throw_vel_x*throw_vel_x+throw_vel_y*throw_vel_y)<sqrtf(vel_x*vel_x+vel_y*vel_y)){
+                        rxSetThrowThrottle(1500);
+                        mixerSetThrowThrottle(280);
+                        yeet_back_pitch = 0;
+                        yeet_back_roll = 0;
+                        YEET_STATE = 6;
+                    }
+                    */
+                    else{
+                        //calculate if drone already on way back by getting angle between pos and vel vector
+                        float pos_vel_angle = (pos_x*vel_x+pos_y*vel_y)/(sqrtf(pos_x*pos_x+pos_y*pos_y)*sqrtf(vel_x*vel_x+vel_y*vel_y));
+                        if (pos_vel_angle < 0){
+                            //calculate where drone would go if it would reduce power, pitch and roll 0 now and slowly fall
+                            time_until_at_user = sqrtf(pos_x*pos_x+pos_y*pos_y) / sqrtf(vel_x*vel_x+vel_y*vel_y); //seconds
+                            projectedHeight = pos_z + (vel_z-0.5*600.0*time_until_at_user) * time_until_at_user; //2048 = 10m
+                            if (projectedHeight > 200){
+                                rxSetThrowThrottle(1600);
+                                mixerSetThrowThrottle(350);
+                                yeet_back_pitch = 0;
+                                yeet_back_roll = 0;
+                                YEET_STATE = 6;
+                            }
+                            else{
+                                rxSetThrowThrottle(1500);
+                                mixerSetThrowThrottle(600); //600
+                            }
+                        }
+                        else{
+                            if (projectedHeight == 0){
+                                rxSetThrowThrottle(1500);
+                                mixerSetThrowThrottle(600); //600
+                            }
+                            else{
+                                //drone was already on way back and overshot or is off target -> float down
+                                rxSetThrowThrottle(1600);
+                                mixerSetThrowThrottle(350);
+                                yeet_back_pitch = 0;
+                                yeet_back_roll = 0;
+                                YEET_STATE = 6;
+                            }
+                            
+                        }
+                    }
                     
-                    yeet_back_roll = -vel_local_frame.y/xy_sum*40;
-                    yeet_back_pitch = vel_local_frame.x/xy_sum*40;
-                    rxSetThrowThrottle(1500);
-                    mixerSetThrowThrottle(600);
-                    YEET_STATE = 6;
+                    
                 }
                 else if (THROW_TYPE == 1){
                     yeet_back_pitch = 0;
                     yeet_back_roll = 0;
                     YEET_STATE = 6;
                     rxSetThrowThrottle(1500);
-                    mixerSetThrowThrottle(600);
+                    mixerSetThrowThrottle(600); //600
                 }
                 else if (THROW_TYPE == 2){
                     yeet_back_pitch = 0;
@@ -1213,25 +1316,16 @@ STATIC_UNIT_TESTED FAST_CODE_NOINLINE float pidLevel(int axis, const pidProfile_
             }
 
             else if (YEET_STATE == 6){
+                rxSetArm(true);
                 if (THROW_TYPE == 0){
-                    if (acc_sum > 6000){
-                        rxSetThrowThrottle(1000);// to turn off motors completely
-                        mixerSetThrowThrottle(0);
-                        YEET_STATE = 7;
-                    }
-                    else if (counter > 1300){
-                        rxSetThrowThrottle(1000);// to turn off motors completely
-                        mixerSetThrowThrottle(0);
-                        YEET_STATE = 7;
-                    }
-                    else if (sqrtf(throw_vel_x*throw_vel_x+throw_vel_y*throw_vel_y)<sqrtf(vel_x*vel_x+vel_y*vel_y)){
+                    if (acc_sum > 4500){
                         rxSetThrowThrottle(1000);// to turn off motors completely
                         mixerSetThrowThrottle(0);
                         YEET_STATE = 7;
                     }
                     else{
                         rxSetThrowThrottle(1500);
-                        mixerSetThrowThrottle(600);
+                        mixerSetThrowThrottle(350);
                     }
                 }
                     
@@ -1256,7 +1350,7 @@ STATIC_UNIT_TESTED FAST_CODE_NOINLINE float pidLevel(int axis, const pidProfile_
                         }
                         else{
                             rxSetThrowThrottle(1500);
-                            mixerSetThrowThrottle(600);
+                            mixerSetThrowThrottle(600); //600
                         }
                     }
 
@@ -1264,12 +1358,12 @@ STATIC_UNIT_TESTED FAST_CODE_NOINLINE float pidLevel(int axis, const pidProfile_
                 }
 
                 else if (THROW_TYPE == 2){
-                    if (acc_sum > 4500){
+                    if (acc_sum > 4000){
                         rxSetThrowThrottle(1000);// to turn off motors completely
                         mixerSetThrowThrottle(0);
                         YEET_STATE = 7;
                     }
-                    else if (counter > 2000){
+                    else if (counter > 4000){
                         rxSetThrowThrottle(1000);// to turn off motors completely
                         mixerSetThrowThrottle(0);
                         YEET_STATE = 7;
@@ -1294,9 +1388,14 @@ STATIC_UNIT_TESTED FAST_CODE_NOINLINE float pidLevel(int axis, const pidProfile_
                 vel_x = 0;
                 vel_y = 0;
                 vel_z = 0;
+                pos_x = 0;
+                pos_y = 0;
+                pos_z = 0;
                 yeet_back_pitch = 0;
                 yeet_back_roll = 0;
                 avg_throw_acc = 0;
+                projectedHeight = 0;
+                throw0falling = false;
             }
 
             
@@ -1315,7 +1414,7 @@ STATIC_UNIT_TESTED FAST_CODE_NOINLINE float pidLevel(int axis, const pidProfile_
     //angle += gpsRescueAngle[axis] / 100; // ANGLE IS IN CENTIDEGREES
 #endif
     float angle;
-    if (YEET_STATE == 6){
+    if (YEET_STATE == 6 || YEET_STATE == 5){
         if (axis == 0){
             angle = yeet_back_roll;
         }

@@ -45,7 +45,7 @@
 #define DEFAULT_SERVO_MAX 2000
 
 extern void rxSetThrowThrottle(int throt);
-extern void rxSetBeeper(int beep);
+extern void rxSetArm(bool arming);
 
 typedef enum {
     RX_FRAME_PENDING = 0,
