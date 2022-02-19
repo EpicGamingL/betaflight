@@ -1014,9 +1014,12 @@ static void loadMainState(timeUs_t currentTimeUs)
     blackboxMainState_t *blackboxCurrent = blackboxHistory[0];
 
     blackboxCurrent->time = currentTimeUs;
-    blackboxCurrent->accADC[0] = lrintf(pidGetVelX());
-    blackboxCurrent->accADC[1] = lrintf(pidGetVelY());
-    blackboxCurrent->accADC[2] = lrintf(pidGetVelZ());
+    //blackboxCurrent->accADC[0] = lrintf(pidGetVelX());
+    //blackboxCurrent->accADC[1] = lrintf(pidGetVelY());
+    //blackboxCurrent->accADC[2] = lrintf(pidGetVelZ());
+    //blackboxCurrent->accADC[0] = lrintf(pidGetCorrectedAccX());
+    //blackboxCurrent->accADC[1] = lrintf(pidGetCorrectedAccY());
+    //blackboxCurrent->accADC[2] = lrintf(pidGetCorrectedAccZ());
     for (int i = 0; i < XYZ_AXIS_COUNT; i++) {
         blackboxCurrent->axisPID_P[i] = pidData[i].P;
         blackboxCurrent->axisPID_I[i] = pidData[i].I;
@@ -1024,7 +1027,7 @@ static void loadMainState(timeUs_t currentTimeUs)
         blackboxCurrent->axisPID_F[i] = pidData[i].F;
         blackboxCurrent->gyroADC[i] = lrintf(gyro.gyroADCf[i]);
 #if defined(USE_ACC)
-        //blackboxCurrent->accADC[i] = lrintf(acc.accADC[i]);
+        blackboxCurrent->accADC[i] = lrintf(acc.accADC[i]);
 #endif
 #ifdef USE_MAG
         blackboxCurrent->magADC[i] = mag.magADC[i];

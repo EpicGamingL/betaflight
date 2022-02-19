@@ -912,6 +912,10 @@ float time_until_at_user; //seconds
 int16_t counter_for_throw_1;
 bool throw0falling;
 
+float acc_x_corrected;
+float acc_y_corrected;
+float acc_z_corrected;
+
 timeUs_t lastTime;
 
 uint16_t pidGetYeetState(){
@@ -977,6 +981,19 @@ float pidGetThrowVelZ(){
 float pidGetProjectedTime(){
     return time_until_at_user;
 }
+
+float pidGetCorrectedAccX(){
+    return acc_x_corrected;
+}
+
+float pidGetCorrectedAccY(){
+    return acc_y_corrected;
+}
+
+float pidGetCorrectedAccZ(){
+    return acc_z_corrected;
+}
+
 // Use the FAST_CODE_NOINLINE directive to avoid this code from being inlined into ITCM RAM to avoid overflow.
 // The impact is possibly slightly slower performance on F7/H7 but they have more than enough
 // processing power that it should be a non-issue.
@@ -998,6 +1015,9 @@ STATIC_UNIT_TESTED FAST_CODE_NOINLINE float pidLevel(int axis, const pidProfile_
 
             counter += 1;
 
+            acc_x_corrected = acc.accADC[0] + ABS(gyro.gyroADCf[2])*0.061;
+            acc_y_corrected = acc.accADC[1] - ABS(gyro.gyroADCf[2])*0.061;
+            acc_z_corrected = acc.accADC[2] - ABS(gyro.gyroADCf[0])*0.735 -ABS(gyro.gyroADCf[1])*0.571;
 
             if (YEET_STATE == 3 || YEET_STATE == 4 || YEET_STATE == 5 || YEET_STATE == 6){
                 quaternion quat;
@@ -1164,7 +1184,7 @@ STATIC_UNIT_TESTED FAST_CODE_NOINLINE float pidLevel(int axis, const pidProfile_
                     if (vel_z < 0){
                         YEET_STATE = 5;
                         rxSetThrowThrottle(1500);
-                        mixerSetThrowThrottle(400);
+                        mixerSetThrowThrottle(300);
                                                             
                     }
                     else{
@@ -1188,7 +1208,7 @@ STATIC_UNIT_TESTED FAST_CODE_NOINLINE float pidLevel(int axis, const pidProfile_
                     if (throw0falling == true){
 
                         //if (ABS(attitude.raw[0])<40 && ABS(attitude.raw[1])<40){
-                        if (pos_z + vel_z*vel_z/4096 > 100){
+                        if ((vel_z > 0) && (pos_z + vel_z*vel_z/4096 > 0)){
                             //calculate in which direction drone has to pitch/roll to come back
                             quaternion quat;
                             getQuaternion(&quat);
@@ -1221,12 +1241,17 @@ STATIC_UNIT_TESTED FAST_CODE_NOINLINE float pidLevel(int axis, const pidProfile_
                             yeet_back_roll = -vel_local_frame.y/xy_sum*40;
                             yeet_back_pitch = vel_local_frame.x/xy_sum*40;
                             rxSetThrowThrottle(1500);
-                            mixerSetThrowThrottle(600);//600
+                            mixerSetThrowThrottle(350);//600
                             YEET_STATE = 5;
                         }
                         else {
                             rxSetThrowThrottle(1500);
-                            mixerSetThrowThrottle(550); //400
+                            mixerSetThrowThrottle(450); //400
+                            if (counter > 2000){
+                                rxSetThrowThrottle(1000);// to turn off motors completely
+                                mixerSetThrowThrottle(0);
+                                YEET_STATE = 7;
+                            }
                         }
                             
                     }
@@ -1247,7 +1272,7 @@ STATIC_UNIT_TESTED FAST_CODE_NOINLINE float pidLevel(int axis, const pidProfile_
                     }
                     else if (counter > 1700){
                         rxSetThrowThrottle(1500);
-                        mixerSetThrowThrottle(350);
+                        mixerSetThrowThrottle(200);
                         yeet_back_pitch = 0;
                         yeet_back_roll = 0;
                         YEET_STATE = 6;
@@ -1270,25 +1295,25 @@ STATIC_UNIT_TESTED FAST_CODE_NOINLINE float pidLevel(int axis, const pidProfile_
                             projectedHeight = pos_z + (vel_z-0.5*600.0*time_until_at_user) * time_until_at_user; //2048 = 10m
                             if (projectedHeight > 200){
                                 rxSetThrowThrottle(1600);
-                                mixerSetThrowThrottle(350);
+                                mixerSetThrowThrottle(200);
                                 yeet_back_pitch = 0;
                                 yeet_back_roll = 0;
                                 YEET_STATE = 6;
                             }
                             else{
                                 rxSetThrowThrottle(1500);
-                                mixerSetThrowThrottle(600); //600
+                                mixerSetThrowThrottle(350); //600
                             }
                         }
                         else{
                             if (projectedHeight == 0){
                                 rxSetThrowThrottle(1500);
-                                mixerSetThrowThrottle(600); //600
+                                mixerSetThrowThrottle(350); //600
                             }
                             else{
                                 //drone was already on way back and overshot or is off target -> float down
                                 rxSetThrowThrottle(1600);
-                                mixerSetThrowThrottle(350);
+                                mixerSetThrowThrottle(200);
                                 yeet_back_pitch = 0;
                                 yeet_back_roll = 0;
                                 YEET_STATE = 6;
@@ -1304,14 +1329,14 @@ STATIC_UNIT_TESTED FAST_CODE_NOINLINE float pidLevel(int axis, const pidProfile_
                     yeet_back_roll = 0;
                     YEET_STATE = 6;
                     rxSetThrowThrottle(1500);
-                    mixerSetThrowThrottle(600); //600
+                    mixerSetThrowThrottle(400); //600
                 }
                 else if (THROW_TYPE == 2){
                     yeet_back_pitch = 0;
                     yeet_back_roll = 0;
                     YEET_STATE = 6;
                     rxSetThrowThrottle(1500);
-                    mixerSetThrowThrottle(400);
+                    mixerSetThrowThrottle(300);
                 }
             }
 
@@ -1325,7 +1350,7 @@ STATIC_UNIT_TESTED FAST_CODE_NOINLINE float pidLevel(int axis, const pidProfile_
                     }
                     else{
                         rxSetThrowThrottle(1500);
-                        mixerSetThrowThrottle(350);
+                        mixerSetThrowThrottle(200);
                     }
                 }
                     
@@ -1370,11 +1395,11 @@ STATIC_UNIT_TESTED FAST_CODE_NOINLINE float pidLevel(int axis, const pidProfile_
                     }
                     else if (counter > 1000){
                         rxSetThrowThrottle(1500);
-                        mixerSetThrowThrottle(280);
+                        mixerSetThrowThrottle(200);
                     }
                     else{
                         rxSetThrowThrottle(1500);
-                        mixerSetThrowThrottle(400);
+                        mixerSetThrowThrottle(300);
                     }
                 }
             }
