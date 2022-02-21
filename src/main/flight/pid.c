@@ -1210,6 +1210,7 @@ STATIC_UNIT_TESTED FAST_CODE_NOINLINE float pidLevel(int axis, const pidProfile_
                         //if (ABS(attitude.raw[0])<40 && ABS(attitude.raw[1])<40){
                         if ((vel_z > 0) && (pos_z + vel_z*vel_z/4096 > 0)){
                             //calculate in which direction drone has to pitch/roll to come back
+
                             quaternion quat;
                             getQuaternion(&quat);
                             quat.x = -quat.x;
@@ -1238,8 +1239,18 @@ STATIC_UNIT_TESTED FAST_CODE_NOINLINE float pidLevel(int axis, const pidProfile_
 
                             //use maximum thrust, calculate how much angle is needed to compensate gravity
                             
-                            yeet_back_roll = -vel_local_frame.y/xy_sum*40;
-                            yeet_back_pitch = vel_local_frame.x/xy_sum*40;
+                            yeet_back_roll = -vel_local_frame.y/xy_sum*25;
+                            yeet_back_pitch = vel_local_frame.x/xy_sum*25;
+                            
+                           /**
+
+                            float local_flyback_x = cosf(attitude.raw[2]/1800*M_PI) * pos_x - sinf(attitude.raw[2]/1800*M_PI) * pos_y;
+                            float local_flyback_y = sinf(attitude.raw[2]/1800*M_PI) * pos_x + cosf(attitude.raw[2]/1800*M_PI) * pos_y;
+                            float xy_sum = sqrtf(local_flyback_x*local_flyback_x + local_flyback_y*local_flyback_y);
+                            
+                            yeet_back_roll = -local_flyback_y/xy_sum*25;
+                            yeet_back_pitch = local_flyback_x/xy_sum*25;
+                            **/
                             rxSetThrowThrottle(1500);
                             mixerSetThrowThrottle(350);//600
                             YEET_STATE = 5;
@@ -1287,6 +1298,40 @@ STATIC_UNIT_TESTED FAST_CODE_NOINLINE float pidLevel(int axis, const pidProfile_
                     }
                     */
                     else{
+                        //calculate in which direction drone has to pitch/roll to come back
+
+                        quaternion quat;
+                        getQuaternion(&quat);
+                        quat.x = -quat.x;
+                        quat.y = -quat.y;
+                        quat.z = -quat.z;
+                        quaternion temp;
+                        quaternion vel_all; 
+                        vel_all.w = 0;
+                        //vel_all.x = -throw_vel_x;
+                        //vel_all.y = -throw_vel_y;
+                        vel_all.x = -pos_x;
+                        vel_all.y = -pos_y;
+                        //vel_all.z = throw_vel_z;
+                        vel_all.z = 0;
+                        quaternion vel_local_frame;
+                        imuQuaternionMultiplication(&quat, &vel_all, &temp);
+                        quat.x = -quat.x;
+                        quat.y = -quat.y;
+                        quat.z = -quat.z;
+                        imuQuaternionMultiplication(&temp, &quat, &vel_local_frame);
+                        float xy_sum = sqrtf(vel_local_frame.x*vel_local_frame.x + vel_local_frame.y*vel_local_frame.y);
+
+                        //calculate where the drone is based on the throw, units are meters
+                        //float delta_horizontal = sqrtf(throw_vel_x*throw_vel_x+throw_vel_y*throw_vel_y)/avg_acc * counter/100;
+                        //float delta_vertical = (throw_vel_z/avg_acc - 0.5*9.81*counter/10000)*counter/100;
+
+                        //use maximum thrust, calculate how much angle is needed to compensate gravity
+                        
+                        yeet_back_roll = -vel_local_frame.y/xy_sum*25;
+                        yeet_back_pitch = vel_local_frame.x/xy_sum*25;
+
+                        
                         //calculate if drone already on way back by getting angle between pos and vel vector
                         float pos_vel_angle = (pos_x*vel_x+pos_y*vel_y)/(sqrtf(pos_x*pos_x+pos_y*pos_y)*sqrtf(vel_x*vel_x+vel_y*vel_y));
                         if (pos_vel_angle < 0){

@@ -61,6 +61,7 @@
 #include "flight/pid.h"
 #include "flight/rpm_filter.h"
 #include "flight/servos.h"
+#include "flight/imu.h"
 
 #include "io/beeper.h"
 #include "io/gps.h"
@@ -1025,7 +1026,8 @@ static void loadMainState(timeUs_t currentTimeUs)
         blackboxCurrent->axisPID_I[i] = pidData[i].I;
         blackboxCurrent->axisPID_D[i] = pidData[i].D;
         blackboxCurrent->axisPID_F[i] = pidData[i].F;
-        blackboxCurrent->gyroADC[i] = lrintf(gyro.gyroADCf[i]);
+        //blackboxCurrent->gyroADC[i] = lrintf(gyro.gyroADCf[i]);
+        blackboxCurrent->gyroADC[i] = lrintf(attitude.raw[i]);
 #if defined(USE_ACC)
         blackboxCurrent->accADC[i] = lrintf(acc.accADC[i]);
 #endif
