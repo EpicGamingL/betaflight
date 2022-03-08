@@ -911,6 +911,7 @@ float projectedHeight;
 float time_until_at_user; //seconds
 int16_t counter_for_throw_1;
 bool throw0falling;
+int power;
 
 float acc_x_corrected;
 float acc_y_corrected;
@@ -1254,6 +1255,7 @@ STATIC_UNIT_TESTED FAST_CODE_NOINLINE float pidLevel(int axis, const pidProfile_
                             rxSetThrowThrottle(1500);
                             mixerSetThrowThrottle(350);//600
                             YEET_STATE = 5;
+                            power = 350;
                         }
                         else {
                             rxSetThrowThrottle(1500);
@@ -1298,6 +1300,13 @@ STATIC_UNIT_TESTED FAST_CODE_NOINLINE float pidLevel(int axis, const pidProfile_
                     }
                     */
                     else{
+
+                        if (vel_z > 0 && pos_z + vel_z*vel_z/1048 > 200){ //v²/2a
+                            power = 310;
+                        }
+                        else if (pos_z < 170){
+                            power = 350;
+                        }
                         //calculate in which direction drone has to pitch/roll to come back
 
                         quaternion quat;
@@ -1336,9 +1345,9 @@ STATIC_UNIT_TESTED FAST_CODE_NOINLINE float pidLevel(int axis, const pidProfile_
                         float pos_vel_angle = (pos_x*vel_x+pos_y*vel_y)/(sqrtf(pos_x*pos_x+pos_y*pos_y)*sqrtf(vel_x*vel_x+vel_y*vel_y));
                         if (pos_vel_angle < 0){
                             //calculate where drone would go if it would reduce power, pitch and roll 0 now and slowly fall
-                            time_until_at_user = sqrtf(pos_x*pos_x+pos_y*pos_y) / sqrtf(vel_x*vel_x+vel_y*vel_y); //seconds
-                            projectedHeight = pos_z + (vel_z-0.5*600.0*time_until_at_user) * time_until_at_user; //2048 = 10m
-                            if (projectedHeight > 200){
+                            time_until_at_user = (sqrtf(pos_x*pos_x+pos_y*pos_y)+100) / sqrtf(vel_x*vel_x+vel_y*vel_y); //seconds
+                            projectedHeight = pos_z + (vel_z-0.5*1000.0*time_until_at_user) * time_until_at_user; //2048 = 10m
+                            if (projectedHeight > 0){
                                 rxSetThrowThrottle(1600);
                                 mixerSetThrowThrottle(200);
                                 yeet_back_pitch = 0;
@@ -1347,13 +1356,13 @@ STATIC_UNIT_TESTED FAST_CODE_NOINLINE float pidLevel(int axis, const pidProfile_
                             }
                             else{
                                 rxSetThrowThrottle(1500);
-                                mixerSetThrowThrottle(350); //600
+                                mixerSetThrowThrottle(power); //350?
                             }
                         }
                         else{
                             if (projectedHeight == 0){
                                 rxSetThrowThrottle(1500);
-                                mixerSetThrowThrottle(350); //600
+                                mixerSetThrowThrottle(power); //600
                             }
                             else{
                                 //drone was already on way back and overshot or is off target -> float down
