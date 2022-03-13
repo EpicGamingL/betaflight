@@ -995,6 +995,14 @@ float pidGetCorrectedAccZ(){
     return acc_z_corrected;
 }
 
+float pidGetPitch(){
+    return yeet_back_pitch;
+}
+
+float pidGetRoll(){
+    return yeet_back_roll;
+}
+
 // Use the FAST_CODE_NOINLINE directive to avoid this code from being inlined into ITCM RAM to avoid overflow.
 // The impact is possibly slightly slower performance on F7/H7 but they have more than enough
 // processing power that it should be a non-issue.
@@ -1129,7 +1137,7 @@ STATIC_UNIT_TESTED FAST_CODE_NOINLINE float pidLevel(int axis, const pidProfile_
                         //rxSetBeeper(1900);
                     }
                     else{
-                        if (avg_throw_acc/avg_acc < 0.15) {
+                        if (avg_throw_acc/avg_acc < 0.2) {
                             //detected free fall
                             YEET_STATE = 4;
                             counter = 0;
@@ -1283,7 +1291,7 @@ STATIC_UNIT_TESTED FAST_CODE_NOINLINE float pidLevel(int axis, const pidProfile_
                         mixerSetThrowThrottle(0);
                         YEET_STATE = 7;
                     }
-                    else if (counter > 1700){
+                    else if (counter > 2700){
                         rxSetThrowThrottle(1500);
                         mixerSetThrowThrottle(200);
                         yeet_back_pitch = 0;

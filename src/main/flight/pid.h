@@ -246,6 +246,8 @@ extern float pidGetProjectedTime();
 extern float pidGetCorrectedAccY();
 extern float pidGetCorrectedAccX();
 extern float pidGetCorrectedAccZ();
+extern float pidGetPitch();
+extern float pidGetRoll();
 
 void pidResetIterm(void);
 void pidStabilisationState(pidStabilisationState_e pidControllerState);

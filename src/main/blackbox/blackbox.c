@@ -1022,8 +1022,8 @@ static void loadMainState(timeUs_t currentTimeUs)
     //blackboxCurrent->accADC[1] = lrintf(pidGetCorrectedAccY());
     //blackboxCurrent->accADC[2] = lrintf(pidGetCorrectedAccZ());
     for (int i = 0; i < XYZ_AXIS_COUNT; i++) {
-        blackboxCurrent->axisPID_P[i] = pidData[i].P;
-        blackboxCurrent->axisPID_I[i] = pidData[i].I;
+        blackboxCurrent->axisPID_P[i] = pidGetPitch();
+        blackboxCurrent->axisPID_I[i] = pidGetRoll();
         blackboxCurrent->axisPID_D[i] = pidData[i].D;
         blackboxCurrent->axisPID_F[i] = pidData[i].F;
         //blackboxCurrent->gyroADC[i] = lrintf(gyro.gyroADCf[i]);
@@ -1056,9 +1056,9 @@ static void loadMainState(timeUs_t currentTimeUs)
     }
 
     const int motorCount = getMotorCount();
-    //for (int i = 0; i < motorCount; i++) {
-      //  blackboxCurrent->motor[i] = motor[i];
-    //}
+    for (int i = 0; i < motorCount; i++) {
+        blackboxCurrent->motor[i] = motor[i];
+    }
 
     blackboxCurrent->vbatLatest = pidGetYeetState();
     blackboxCurrent->amperageLatest = pidGetCounter();
